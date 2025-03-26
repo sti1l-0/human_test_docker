@@ -44,7 +44,7 @@ docker build -t command-client .
 
 2. 运行Docker容器：
 ```bash
-docker run -d --name command-client command-client
+docker run -v ./client:/app/code -d --name command-client command-client
 ```
 
 ## API接口
