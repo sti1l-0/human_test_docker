@@ -1,4 +1,4 @@
-FROM python:3.9-slim
+FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/python:3.9-slim
 
 WORKDIR /app
 
@@ -7,16 +7,20 @@ RUN apt-get update && apt-get install -y \
     procps \
     && rm -rf /var/lib/apt/lists/*
 
-# 复制客户端代码和依赖文件
-COPY client/client.py .
-COPY requirements.txt .
+# 创建代码目录
+RUN mkdir -p /app/code
+
+# 复制依赖文件
+COPY requirements.txt /app/
 
 # 安装Python依赖
 RUN pip install --no-cache-dir -r requirements.txt
 
 # 设置环境变量
-ENV SERVER_URL=http://host.docker.internal:5000
 ENV CLIENT_DESCRIPTION="Docker Container Client"
 
+# 创建挂载点
+VOLUME ["/app/code"]
+
 # 运行客户端
-CMD ["python", "client.py"] 
+CMD ["python", "/app/code/client.py"] 
