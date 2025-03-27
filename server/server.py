@@ -85,7 +85,6 @@ def get_commands():
             SELECT id, command 
             FROM commands 
             WHERE requested = 0 
-            ORDER BY RANDOM() 
             LIMIT ?
         """, (batch_size,))
         

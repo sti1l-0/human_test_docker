@@ -1,26 +1,29 @@
-FROM swr.cn-north-4.myhuaweicloud.com/ddn-k8s/docker.io/python:3.9-slim
+FROM docker-0.unsee.tech/ubuntu:24.04
 
 WORKDIR /app
 
-# 安装基本工具
+# 安装基本工具和Python
 RUN apt-get update && apt-get install -y \
     procps \
-    && rm -rf /var/lib/apt/lists/*
+    python3 \
+    python3-pip \
+    python3-venv \
+    && rm -rf /var/lib/apt/lists/* \
+    && mkdir -p /app/code
 
-# 创建代码目录
-RUN mkdir -p /app/code
-
-# 复制依赖文件
+# 复制依赖文件并安装
 COPY requirements.txt /app/
-
-# 安装Python依赖
-RUN pip install --no-cache-dir -r requirements.txt
+RUN python3 -m venv /app/.venv \
+    && . /app/.venv/bin/activate \
+    && pip3 install --no-cache-dir -r requirements.txt
 
 # 设置环境变量
-ENV CLIENT_DESCRIPTION="Docker Container Client"
+ENV CLIENT_DESCRIPTION="Docker Container Client" \
+    PATH="/app/.venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1
 
 # 创建挂载点
 VOLUME ["/app/code"]
 
-# 运行客户端
-CMD ["python", "/app/code/client.py"] 
+# 设置启动命令
+CMD ["python3", "/app/code/client.py"]
