@@ -22,8 +22,8 @@ ENV CLIENT_DESCRIPTION="Docker Container Client" \
     PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1
 
-# 创建挂载点
-VOLUME ["/app/code"]
+# 复制代码文件
+COPY code/ /app/code/
 
 # 设置启动命令
 CMD ["python3", "/app/code/client.py"]
