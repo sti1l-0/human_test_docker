@@ -1,35 +1,35 @@
-#!/Usr/Bin/Python3
+#!/usr/bin/python3
 
-Import Subprocess
-Import Time
-Import Psutil
-Import Os
-From Concurrent.Futures Import ThreadPoolExecutor, As_Completed
-Import Logging
-From Typing Import Dict, Any, List, Set, Optional
-Import Sys
-Import Threading
-Import Signal
-From Pathlib Import Path
-Import Requests
-Import Json
-From Queue Import Queue
-From Dataclasses Import Dataclass
-From Datetime Import Datetime
+import subprocess
+import time
+import psutil
+import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import logging
+from typing import Dict, Any, List, Set, Optional
+import sys
+import threading
+import signal
+from pathlib import Path
+import requests
+import json
+from queue import Queue
+from dataclasses import dataclass
+from datetime import datetime
 
 # 配置日志
-Logging.BasicConfig(
-    Level=Logging.INFO,
-    Format='%(Asctime)S - %(Levelname)S - %(Message)S',
-    Handlers=[
-        Logging.FileHandler('Execution.Log'),
-        Logging.StreamHandler(Sys.Stdout)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('execution.log'),
+        logging.StreamHandler(sys.stdout)
     ]
 )
 
 # 配置常量
-SERVER_URL = Os.Getenv('SERVER_URL', 'Http://172.23.216.211:5000')
-CLIENT_DESCRIPTION = Os.Getenv('CLIENT_DESCRIPTION', 'Default Client - No Description Provided')
+SERVER_URL = os.getenv('SERVER_URL', 'http://172.23.216.211:5000')
+CLIENT_DESCRIPTION = os.getenv('CLIENT_DESCRIPTION', 'Default Client - No Description Provided')
 MAX_CPU_PERCENT = 90
 MAX_MEMORY_PERCENT = 90
 RESOURCE_CHECK_INTERVAL = 5
@@ -41,242 +41,242 @@ RETRY_DELAY = 10
 MAX_CONCURRENT_BATCHES = 2  # 最大并发批次数
 BATCH_SUBMIT_INTERVAL = 2  # 批次提交间隔（秒）
 
-@Dataclass
-Class CommandResult:
-    Command_Id: Str
-    Command: Str
-    Execution_Time: Float
-    Output: Str
-    Memory_Usage: Float
-    Success: Bool
-    Timestamp: Datetime = Datetime.Now()
+@dataclass
+class CommandResult:
+    command_id: str
+    command: str
+    execution_time: float
+    output: str
+    memory_usage: float
+    success: bool
+    timestamp: datetime = datetime.now()
 
-Class ResultQueue:
-    Def __Init__(Self, Max_Size: Int = 100):
-        Self.Queue = Queue(Maxsize=Max_Size)
-        Self.Lock = Threading.Lock()
+class ResultQueue:
+    def __init__(self, max_size: int = 100):
+        self.queue = Queue(maxsize=max_size)
+        self.lock = threading.Lock()
         
-    Def Put(Self, Result: CommandResult):
-        Try:
-            Self.Queue.Put(Result, Timeout=1)
-        Except Exception As E:
-            Logging.Error(F"添加结果到队列失败: {Str(E)}")
+    def put(self, result: CommandResult):
+        try:
+            self.queue.put(result, timeout=1)
+        except Exception as e:
+            logging.error(f"添加结果到队列失败: {str(e)}")
             
-    Def Get_Batch(Self, Size: Int) -> List[CommandResult]:
-        Results = []
-        While Len(Results) < Size And Not Self.Queue.Empty():
-            Try:
-                Result = Self.Queue.Get(Timeout=1)
-                Results.Append(Result)
-            Except Exception:
-                Break
-        Return Results
+    def get_batch(self, size: int) -> List[CommandResult]:
+        results = []
+        while len(results) < size and not self.queue.empty():
+            try:
+                result = self.queue.get(timeout=1)
+                results.append(result)
+            except Exception:
+                break
+        return results
 
 # 全局控制标志
-Should_Stop = Threading.Event()
-Result_Queue = ResultQueue()
+should_stop = threading.Event()
+result_queue = ResultQueue()
 
-Def Get_Commands(Batch_Size: Int = BATCH_SIZE) -> Optional[List[Dict[Str, Any]]]:
+def get_commands(batch_size: int = BATCH_SIZE) -> Optional[List[Dict[str, Any]]]:
     """从服务器获取一批命令，包含重试机制"""
-    For Attempt In Range(MAX_RETRIES):
-        Try:
-            Response = Requests.Get(
-                F'{SERVER_URL}/Get_Commands',
-                Params={'Batch_Size': Batch_Size},
-                Timeout=10
+    for attempt in range(MAX_RETRIES):
+        try:
+            response = requests.get(
+                f'{SERVER_URL}/get_commands',
+                params={'batch_size': batch_size},
+                timeout=10
             )
-            If Response.Status_Code == 200:
-                Return Response.Json()
-            Logging.Warning(F"获取命令失败，状态码: {Response.Status_Code}")
-        Except Requests.Exceptions.RequestException As E:
-            Logging.Error(F"连接服务器错误: {Str(E)}")
-        If Attempt < MAX_RETRIES - 1:
-            Time.Sleep(RETRY_DELAY)
-    Return None
+            if response.status_code == 200:
+                return response.json()
+            logging.warning(f"获取命令失败，状态码: {response.status_code}")
+        except requests.exceptions.RequestException as e:
+            logging.error(f"连接服务器错误: {str(e)}")
+        if attempt < MAX_RETRIES - 1:
+            time.sleep(RETRY_DELAY)
+    return None
 
-Class ResourceMonitor:
+class ResourceMonitor:
     """系统资源监控类"""
-    @Staticmethod
-    Def Monitor():
-        While Not Should_Stop.Is_Set():
-            Try:
-                Cpu_Percent = Psutil.Cpu_Percent(Interval=1)
-                Memory_Percent = Psutil.Virtual_Memory().Percent
+    @staticmethod
+    def monitor():
+        while not should_stop.is_set():
+            try:
+                cpu_percent = psutil.cpu_percent(interval=1)
+                memory_percent = psutil.virtual_memory().percent
                 
-                If Cpu_Percent > MAX_CPU_PERCENT Or Memory_Percent > MAX_MEMORY_PERCENT:
-                    Logging.Warning(F"系统资源使用过高: CPU {Cpu_Percent}%, 内存 {Memory_Percent}%")
-                    Should_Stop.Set()
-                    Break
+                if cpu_percent > MAX_CPU_PERCENT or memory_percent > MAX_MEMORY_PERCENT:
+                    logging.warning(f"系统资源使用过高: CPU {cpu_percent}%, 内存 {memory_percent}%")
+                    should_stop.set()
+                    break
                     
-                Time.Sleep(RESOURCE_CHECK_INTERVAL)
-            Except Exception As E:
-                Logging.Error(F"资源监控错误: {Str(E)}")
-                Break
+                time.sleep(RESOURCE_CHECK_INTERVAL)
+            except Exception as e:
+                logging.error(f"资源监控错误: {str(e)}")
+                break
 
-Class CommandExecutor:
+class CommandExecutor:
     """命令执行类"""
-    @Staticmethod
-    Def Execute(Command_Data: Dict[Str, Any]) -> Optional[CommandResult]:
-        If Should_Stop.Is_Set():
-            Return None
+    @staticmethod
+    def execute(command_data: Dict[str, Any]) -> Optional[CommandResult]:
+        if should_stop.is_set():
+            return None
             
-        Try:
-            Command_Id = Command_Data.Get('Id')
-            Command = Command_Data.Get('Command')
+        try:
+            command_id = command_data.get('id')
+            command = command_data.get('command')
             
-            If Not Command_Id Or Not Command:
-                Logging.Error("命令数据不完整")
-                Return None
+            if not command_id or not command:
+                logging.error("命令数据不完整")
+                return None
             
-            Start_Time = Time.Time()
-            Process = Psutil.Process(Os.Getpid())
-            Start_Mem = Process.Memory_Info().Rss / 1024 / 1024
+            start_time = time.time()
+            process = psutil.Process(os.getpid())
+            start_mem = process.memory_info().rss / 1024 / 1024
             
-            With Subprocess.Popen(
-                Command,
-                Shell=True,
-                Stdout=Subprocess.PIPE,
-                Stderr=Subprocess.PIPE,
-                Text=True,
-                Preexec_Fn=Os.Setsid
-            ) As Proc:
-                Try:
-                    Stdout, Stderr = Proc.Communicate(Timeout=COMMAND_TIMEOUT)
-                    Success = Proc.Returncode == 0
-                    Output = Stdout If Success Else Stderr
-                    Output = Output.Replace('\N', '\\N').Replace('\R', '\\R')
-                Except Subprocess.TimeoutExpired:
-                    Os.Killpg(Os.Getpgid(Proc.Pid), Signal.SIGTERM)
-                    Output = F"命令执行超时 ({COMMAND_TIMEOUT}秒)"
-                    Success = False
+            with subprocess.Popen(
+                command,
+                shell=True,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                preexec_fn=os.setsid
+            ) as proc:
+                try:
+                    stdout, stderr = proc.communicate(timeout=COMMAND_TIMEOUT)
+                    success = proc.returncode == 0
+                    output = stdout if success else stderr
+                    output = output.replace('\n', '\\n').replace('\r', '\\r')
+                except subprocess.TimeoutExpired:
+                    os.killpg(os.getpgid(proc.pid), signal.SIGTERM)
+                    output = f"命令执行超时 ({COMMAND_TIMEOUT}秒)"
+                    success = False
             
-            Execution_Time = Time.Time() - Start_Time
-            Memory_Usage = Process.Memory_Info().Rss / 1024 / 1024 - Start_Mem
+            execution_time = time.time() - start_time
+            memory_usage = process.memory_info().rss / 1024 / 1024 - start_mem
             
-            Return CommandResult(
-                Command_Id=Command_Id,
-                Command=Command,
-                Execution_Time=Execution_Time,
-                Output=Output,
-                Memory_Usage=Memory_Usage,
-                Success=Success
+            return CommandResult(
+                command_id=command_id,
+                command=command,
+                execution_time=execution_time,
+                output=output,
+                memory_usage=memory_usage,
+                success=success
             )
-        Except Exception As E:
-            Logging.Error(F"执行命令 {Command_Data.Get('Id', 'Unknown')} 时出错: {Str(E)}")
-            Return None
+        except Exception as e:
+            logging.error(f"执行命令 {command_data.get('id', 'Unknown')} 时出错: {str(e)}")
+            return None
 
-Def Submit_Results(Results: List[CommandResult]) -> Bool:
+def submit_results(results: List[CommandResult]) -> bool:
     """批量提交执行结果到服务器"""
-    If Not Results:
-        Return True
+    if not results:
+        return True
         
-    Try:
-        Data = [{
-            'Command_Id': Result.Command_Id,
-            'Command': Result.Command,
-            'Execution_Time': Result.Execution_Time,
-            'Output': Result.Output,
-            'Memory_Usage': Result.Memory_Usage,
-            'Client_Description': CLIENT_DESCRIPTION
-        } For Result In Results]
+    try:
+        data = [{
+            'command_id': result.command_id,
+            'command': result.command,
+            'execution_time': result.execution_time,
+            'output': result.output,
+            'memory_usage': result.memory_usage,
+            'client_description': CLIENT_DESCRIPTION
+        } for result in results]
         
-        Response = Requests.Post(
-            F'{SERVER_URL}/Submit_Results',
-            Json=Data,
-            Timeout=10
+        response = requests.post(
+            f'{SERVER_URL}/submit_results',
+            json=data,
+            timeout=10
         )
         
-        If Response.Status_Code != 200:
-            Logging.Error(F"提交结果失败，状态码: {Response.Status_Code}")
-        Return Response.Status_Code == 200
-    Except Requests.Exceptions.RequestException As E:
-        Logging.Error(F"提交结果时发生错误: {Str(E)}")
-        Return False
+        if response.status_code != 200:
+            logging.error(f"提交结果失败，状态码: {response.status_code}")
+        return response.status_code == 200
+    except requests.exceptions.RequestException as e:
+        logging.error(f"提交结果时发生错误: {str(e)}")
+        return False
 
-Class BatchProcessor:
+class BatchProcessor:
     """批处理类"""
-    Def __Init__(Self):
-        Self.Active_Batches = 0
-        Self.Lock = Threading.Lock()
+    def __init__(self):
+        self.active_batches = 0
+        self.lock = threading.Lock()
         
-    Def Process_Batch(Self, Commands: List[Dict[Str, Any]]):
-        If Not Commands:
-            Return
+    def process_batch(self, commands: List[Dict[str, Any]]):
+        if not commands:
+            return
             
-        With Self.Lock:
-            If Self.Active_Batches >= MAX_CONCURRENT_BATCHES:
-                Logging.Warning("已达到最大并发批次数，跳过当前批次")
-                Return
-            Self.Active_Batches += 1
+        with self.lock:
+            if self.active_batches >= MAX_CONCURRENT_BATCHES:
+                logging.warning("已达到最大并发批次数，跳过当前批次")
+                return
+            self.active_batches += 1
             
-        Try:
-            Max_Workers = Min(8, Len(Commands))
+        try:
+            max_workers = min(8, len(commands))
             
-            With ThreadPoolExecutor(Max_Workers=Max_Workers) As Executor:
-                Future_To_Cmd = {
-                    Executor.Submit(CommandExecutor.Execute, Cmd): Cmd.Get('Id', 'Unknown')
-                    For Cmd In Commands
+            with ThreadPoolExecutor(max_workers=max_workers) as executor:
+                future_to_cmd = {
+                    executor.submit(CommandExecutor.execute, cmd): cmd.get('id', 'Unknown')
+                    for cmd in commands
                 }
                 
-                For Future In As_Completed(Future_To_Cmd):
-                    If Should_Stop.Is_Set():
-                        Break
+                for future in as_completed(future_to_cmd):
+                    if should_stop.is_set():
+                        break
                         
-                    Cmd_Id = Future_To_Cmd[Future]
-                    Try:
-                        Result = Future.Result()
-                        If Result:
-                            Result_Queue.Put(Result)
-                            Logging.Info(F"命令 {Cmd_Id} 执行完成")
-                    Except Exception As E:
-                        Logging.Error(F"命令 {Cmd_Id} 执行失败: {Str(E)}")
+                    cmd_id = future_to_cmd[future]
+                    try:
+                        result = future.result()
+                        if result:
+                            result_queue.put(result)
+                            logging.info(f"命令 {cmd_id} 执行完成")
+                    except Exception as e:
+                        logging.error(f"命令 {cmd_id} 执行失败: {str(e)}")
                         
-        Finally:
-            With Self.Lock:
-                Self.Active_Batches -= 1
+        finally:
+            with self.lock:
+                self.active_batches -= 1
 
-Def Result_Submitter():
+def result_submitter():
     """结果提交线程"""
-    While Not Should_Stop.Is_Set():
-        Try:
-            Results = Result_Queue.Get_Batch(BATCH_SIZE)
-            If Results:
-                Submit_Results(Results)
-            Time.Sleep(BATCH_SUBMIT_INTERVAL)
-        Except Exception As E:
-            Logging.Error(F"结果提交线程错误: {Str(E)}")
-            Time.Sleep(RETRY_DELAY)
+    while not should_stop.is_set():
+        try:
+            results = result_queue.get_batch(BATCH_SIZE)
+            if results:
+                submit_results(results)
+            time.sleep(BATCH_SUBMIT_INTERVAL)
+        except Exception as e:
+            logging.error(f"结果提交线程错误: {str(e)}")
+            time.sleep(RETRY_DELAY)
 
-Def Main():
-    Try:
-        Batch_Processor = BatchProcessor()
+def main():
+    try:
+        batch_processor = BatchProcessor()
         
         # 启动资源监控
-        Monitor_Thread = Threading.Thread(Target=ResourceMonitor.Monitor)
-        Monitor_Thread.Daemon = True
-        Monitor_Thread.Start()
+        monitor_thread = threading.Thread(target=ResourceMonitor.monitor)
+        monitor_thread.daemon = True
+        monitor_thread.start()
         
         # 启动结果提交线程
-        Submitter_Thread = Threading.Thread(Target=Result_Submitter)
-        Submitter_Thread.Daemon = True
-        Submitter_Thread.Start()
+        submitter_thread = threading.Thread(target=result_submitter)
+        submitter_thread.daemon = True
+        submitter_thread.start()
         
-        While Not Should_Stop.Is_Set():
-            Commands = Get_Commands()
-            If Not Commands:
-                Logging.Info("没有获取到命令，等待10秒后重试...")
-                Time.Sleep(10)
-                Continue
+        while not should_stop.is_set():
+            commands = get_commands()
+            if not commands:
+                logging.info("没有获取到命令，等待10秒后重试...")
+                time.sleep(10)
+                continue
             
-            Batch_Processor.Process_Batch(Commands)
-            Time.Sleep(1)  # 避免过于频繁的请求
+            batch_processor.process_batch(commands)
+            time.sleep(1)  # 避免过于频繁的请求
                 
-    Except Exception As E:
-        Logging.Error(F"程序执行出错: {Str(E)}")
-        Raise
-    Finally:
-        Should_Stop.Set()
-        Logging.Info("程序正在退出...")
+    except Exception as e:
+        logging.error(f"程序执行出错: {str(e)}")
+        raise
+    finally:
+        should_stop.set()
+        logging.info("程序正在退出...")
 
-If __Name__ == "__Main__":
-    Main()
+if __name__ == "__main__":
+    main()
