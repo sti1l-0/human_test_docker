@@ -23,7 +23,7 @@ ENV CLIENT_DESCRIPTION="Docker Container Client" \
     PYTHONUNBUFFERED=1
 
 # 复制代码文件
-COPY code/ /app/code/
+COPY client/client.py /app/code/
 
 # 设置启动命令
 CMD ["python3", "/app/code/client.py"]
