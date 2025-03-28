@@ -44,7 +44,7 @@ docker build -t command-client .
 
 2. 运行Docker容器：
 ```bash
-docker run -v ./client:/app/code -d --name command-client command-client
+docker run -d --name command-client command-client
 ```
 
 ## API接口
@@ -63,8 +63,6 @@ docker run -v ./client:/app/code -d --name command-client command-client
 ## 注意事项
 
 - 确保服务端在客户端容器可以访问的地址运行
-- 默认使用 host.docker.internal 访问宿主机上的服务端
 - 如需修改服务端地址，请更新 Dockerfile 中的 SERVER_URL 环境变量
 
 # human_test_docker
- 
